@@ -25,3 +25,12 @@ logs/
 .env
 .venv/
 venv/
+
+# Old run artifacts (large binaries)
+checkpoints1.0/
+data1.0/
+results1.0/
+oldresults/
+checkpoints/
+results/
+pipeline.log

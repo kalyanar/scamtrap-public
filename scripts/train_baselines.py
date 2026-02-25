@@ -16,6 +16,8 @@ from scamtrap.utils.io import save_results
 from scamtrap.baselines.tfidf_logreg import TfIdfLogRegBaseline
 from scamtrap.baselines.finetuned_bert import FineTunedBertBaseline
 from scamtrap.baselines.sbert_linear import SBERTLinearBaseline
+from scamtrap.baselines.e5_baseline import E5LargeBaseline
+from scamtrap.baselines.nli_zeroshot import NLIZeroShotBaseline
 from scamtrap.evaluation.fewshot import evaluate_fewshot
 from scamtrap.evaluation.openset import evaluate_openset
 from scamtrap.evaluation.retrieval import evaluate_retrieval
@@ -172,13 +174,77 @@ def main():
     all_baseline_results["sbert_linear"] = results
     print(f"  Few-shot 100%: F1={results['fewshot']['1.0']['f1_macro']['mean']:.3f}")
 
+    # --- E5-large-v2 + Linear ---
+    print("=" * 50)
+    print("Training E5-large-v2 + Linear baseline...")
+    e5 = E5LargeBaseline(seed=config.seed)
+    e5.fit(
+        splits["train"]["text"].tolist(),
+        splits["train"]["intent_id"].values,
+    )
+
+    e5_embs = {
+        name: e5.get_embeddings(splits[name]["text"].tolist())
+        for name in splits
+    }
+
+    results = evaluate_baseline(
+        "e5_large",
+        e5_embs["train"], splits["train"]["intent_id"].values,
+        e5_embs["test_seen"], splits["test_seen"]["intent_id"].values,
+        e5_embs.get("test_unseen", np.array([])),
+        splits.get("test_unseen", pd.DataFrame()).get("intent_id", pd.Series(dtype=int)).values,
+        config,
+    )
+    all_baseline_results["e5_large"] = results
+    print(f"  Few-shot 100%: F1={results['fewshot']['1.0']['f1_macro']['mean']:.3f}")
+
+    # --- NLI Zero-Shot (DeBERTa-v3-base) ---
+    print("=" * 50)
+    print("Evaluating NLI Zero-Shot baseline...")
+    from scamtrap.data.intent_descriptions import INTENT_DESCRIPTIONS
+
+    # Build id-to-intent mapping from data
+    data_dir_meta = Path(config.data.output_dir)
+    with open(data_dir_meta / "metadata.json") as f:
+        meta = json.load(f)
+    id_to_intent = meta["id_to_intent"]
+
+    nli = NLIZeroShotBaseline()
+
+    # Evaluate on test_seen
+    seen_texts = splits["test_seen"]["text"].tolist()
+    seen_true_intents = [id_to_intent[str(lid)] for lid in splits["test_seen"]["intent_id"].values]
+    seen_candidate_intents = list(set(seen_true_intents))
+    nli_seen_results = nli.evaluate(seen_texts, np.array(seen_true_intents),
+                                     candidate_intents=seen_candidate_intents)
+
+    # Evaluate on test_unseen
+    nli_unseen_results = {}
+    if "test_unseen" in splits and len(splits["test_unseen"]) > 0:
+        unseen_texts = splits["test_unseen"]["text"].tolist()
+        unseen_true_intents = [id_to_intent[str(lid)] for lid in splits["test_unseen"]["intent_id"].values]
+        all_intents = list(INTENT_DESCRIPTIONS.keys())
+        nli_unseen_results = nli.evaluate(unseen_texts, np.array(unseen_true_intents),
+                                           candidate_intents=all_intents)
+
+    all_baseline_results["nli_zeroshot"] = {
+        "model": "nli_zeroshot",
+        "seen": nli_seen_results,
+        "unseen": nli_unseen_results,
+    }
+    print(f"  Seen accuracy: {nli_seen_results['accuracy']:.3f}")
+    if nli_unseen_results:
+        print(f"  Unseen accuracy: {nli_unseen_results['accuracy']:.3f}")
+
     # Save all baseline results
     save_results(all_baseline_results, str(output_dir / "baseline_results.json"))
 
     # Save embeddings
     emb_dir = output_dir / "embeddings"
     emb_dir.mkdir(parents=True, exist_ok=True)
-    for method, embs_dict in [("tfidf", tfidf_embs), ("bert", bert_embs), ("sbert", sbert_embs)]:
+    for method, embs_dict in [("tfidf", tfidf_embs), ("bert", bert_embs),
+                               ("sbert", sbert_embs), ("e5", e5_embs)]:
         for split_name, embs in embs_dict.items():
             if isinstance(embs, np.ndarray) and len(embs) > 0:
                 np.save(str(emb_dir / f"{method}_{split_name}.npy"), embs)

@@ -1,6 +1,7 @@
 .PHONY: setup data train train-baselines evaluate visualize tables all clean \
        train-clip evaluate-clip prepare-conversations train-world-model \
-       evaluate-world-model all-stages
+       train-world-model-transformer evaluate-world-model \
+       audit-stage-labels all-stages
 
 CONFIG ?= configs/default.yaml
 
@@ -42,13 +43,20 @@ prepare-conversations:
 train-world-model:
 	python scripts/train_world_model.py --config $(CONFIG)
 
+train-world-model-transformer:
+	python scripts/train_world_model.py --config $(CONFIG) --model-type transformer
+
 evaluate-world-model:
 	python scripts/evaluate_world_model.py --config $(CONFIG)
 
-# Full pipeline: all three stages
+# Stage label artifact audit
+audit-stage-labels:
+	python scripts/audit_stage_labels.py --config $(CONFIG)
+
+# Full pipeline: all three stages + new baselines + audits
 all-stages: data train train-baselines evaluate train-clip evaluate-clip \
-            prepare-conversations train-world-model evaluate-world-model \
-            visualize tables
+            prepare-conversations train-world-model train-world-model-transformer \
+            evaluate-world-model audit-stage-labels visualize tables
 
 clean:
 	rm -rf data/processed checkpoints logs results
