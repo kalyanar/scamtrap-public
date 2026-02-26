@@ -73,6 +73,7 @@ def main():
     # Train
     trainer = WorldModelTrainer(
         model, loaders["train"], loaders["val"], config,
+        model_type=args.model_type,
     )
     history = trainer.train()
 

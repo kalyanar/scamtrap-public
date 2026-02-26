@@ -27,11 +27,13 @@ def get_scheduler(optimizer, config, num_training_steps):
 class WorldModelTrainer:
     """Training loop for GRU/Transformer world model."""
 
-    def __init__(self, model, train_loader, val_loader, config):
+    def __init__(self, model, train_loader, val_loader, config,
+                 model_type="gru"):
         self.model = model
         self.train_loader = train_loader
         self.val_loader = val_loader
         self.config = config
+        self.model_type = model_type
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model.to(self.device)
@@ -139,9 +141,10 @@ class WorldModelTrainer:
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
                 patience_counter = 0
+                ckpt_name = f"best_model_{self.model_type}.pt"
                 save_checkpoint(
                     self.model, self.optimizer, epoch, val_loss,
-                    str(self.checkpoint_dir / "best_model.pt"),
+                    str(self.checkpoint_dir / ckpt_name),
                 )
                 print(f"  -> Saved best model (val_loss={val_loss:.4f})")
             else:
@@ -150,9 +153,10 @@ class WorldModelTrainer:
                     print(f"  -> Early stopping at epoch {epoch}")
                     break
 
+        final_name = f"final_model_{self.model_type}.pt"
         save_checkpoint(
             self.model, self.optimizer, epoch, val_loss,
-            str(self.checkpoint_dir / "final_model.pt"),
+            str(self.checkpoint_dir / final_name),
         )
 
         return history

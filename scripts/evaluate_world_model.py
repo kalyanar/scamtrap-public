@@ -80,12 +80,27 @@ def main():
     else:
         model = ScamWorldModel(config)
 
-    ckpt_path = Path(config.stage_c.checkpoint_dir) / "best_model.pt"
+    ckpt_name = f"best_model_{args.model_type}.pt"
+    ckpt_path = Path(config.stage_c.checkpoint_dir) / ckpt_name
+    # Fall back to legacy filename, but validate architecture matches
+    if not ckpt_path.exists():
+        legacy_path = Path(config.stage_c.checkpoint_dir) / "best_model.pt"
+        if legacy_path.exists():
+            ckpt = torch.load(str(legacy_path), map_location="cpu", weights_only=False)
+            keys = list(ckpt.get("model_state_dict", ckpt).keys())
+            is_transformer = any("transformer" in k for k in keys)
+            want_transformer = args.model_type == "transformer"
+            if is_transformer == want_transformer:
+                ckpt_path = legacy_path
+            else:
+                found_arch = "transformer" if is_transformer else "gru"
+                print(f"WARNING: best_model.pt is a {found_arch} checkpoint, "
+                      f"but --model-type={args.model_type}. Skipping.")
     if ckpt_path.exists():
         load_checkpoint(str(ckpt_path), model)
         print(f"Loaded world model from {ckpt_path}")
     else:
-        print(f"WARNING: No checkpoint at {ckpt_path}")
+        print(f"WARNING: No checkpoint at {ckpt_path}, evaluating untrained model")
 
     all_results = {"model": f"world_model_{args.model_type}"}
 
@@ -211,7 +226,7 @@ def main():
           f"Esc AUROC: {logreg_results['escalation_auroc']:.3f}")
 
     # Save
-    results_path = output_dir / "world_model_results.json"
+    results_path = output_dir / f"world_model_{args.model_type}_results.json"
     save_results(all_results, str(results_path))
     print(f"\nAll results saved to {results_path}")
 

@@ -65,12 +65,14 @@ def main():
 
     # Load GRU model
     model = ScamWorldModel(config)
-    ckpt_path = Path(config.stage_c.checkpoint_dir) / "best_model.pt"
+    ckpt_path = Path(config.stage_c.checkpoint_dir) / "best_model_gru.pt"
+    if not ckpt_path.exists():
+        ckpt_path = Path(config.stage_c.checkpoint_dir) / "best_model.pt"
     if ckpt_path.exists():
         load_checkpoint(str(ckpt_path), model)
         print(f"Loaded GRU model from {ckpt_path}")
     else:
-        print(f"WARNING: No checkpoint at {ckpt_path}")
+        print(f"WARNING: No checkpoint found")
 
     # Fit baselines
     markov = MarkovChainBaseline(num_stages=config.stage_c.num_stages)
